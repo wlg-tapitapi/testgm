@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📺 TAPI TAPI GM VIEW</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='52' font-size='56'>📺</text></svg>">
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  // ====================================================
+  // ★ ここを自分のFirebase設定に書き換えてください ★
+  // ====================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyAymLE_WA4c8i71_T93qS3rYOvO_K4UhBI",
+  authDomain: "no-same-answer.firebaseapp.com",
+  databaseURL: "https://no-same-answer-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "no-same-answer",
+  storageBucket: "no-same-answer.firebasestorage.app",
+  messagingSenderId: "375361422194",
+  appId: "1:375361422194:web:ada999458ed68e30c753eb"
+};
+  // ====================================================
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+
+  let revealedCards = new Set();
+
+  const cardsContainer      = document.getElementById('cardsContainer');
+  const currentQDisplay     = document.getElementById('currentQDisplay');
+  const answerCount         = document.getElementById('answerCount');
+  const onairLamp           = document.getElementById('onairLamp');
+  const emptyState          = document.getElementById('emptyState');
+
+  // ── 質問を監視 ───────────────────────────────────
+  onValue(ref(db, 'session/question'), snap => {
+    const q = snap.val();
+    currentQDisplay.textContent = q || '次の質問をお待ちください…';
+    if (q) onairLamp.classList.add('on');
+    else   onairLamp.classList.remove('on');
+  });
+
+  // ── 回答を監視 ───────────────────────────────────
+  onValue(ref(db, 'session/answers'), snap => {
+    const answers = snap.val();
+    cardsContainer.innerHTML = '';
+
+    if (!answers) {
+      answerCount.textContent = '0';
+      emptyState.style.display = 'flex';
+      return;
+    }
+
+    emptyState.style.display = 'none';
+    const entries = Object.entries(answers);
+    answerCount.textContent = entries.length;
+
+    entries.forEach(([id, data], idx) => {
+      const card = createCard(id, data.name, data.answer, idx);
+      if (revealedCards.has(id)) card.classList.add('revealed');
+      cardsContainer.appendChild(card);
+    });
+  });
+
+  // ── 全オープン信号を監視（controlから） ──────────
+  onValue(ref(db, 'session/revealAll'), snap => {
+    if (!snap.val()) return;
+    document.querySelectorAll('.answer-card:not(.revealed)').forEach((card, i) => {
+      setTimeout(() => {
+        card.classList.add('revealed');
+        revealedCards.add(card.dataset.id);
+        playReveal();
+      }, i * 130);
+    });
+  });
+
+  // ── カード生成 ───────────────────────────────────
+  function createCard(id, name, answer, idx) {
+    const card = document.createElement('div');
+    card.className = 'answer-card';
+    card.dataset.id = id;
+    card.style.animationDelay = `${idx * 0.06}s`;
+
+    const colors = ['#FF6B6B','#FFB347','#FFD93D','#6BCB77','#4D96FF','#C77DFF','#FF77B5','#00C9A7'];
+    const col = colors[idx % colors.length];
+
+    card.innerHTML = `
+      <div class="card-inner">
+        <div class="card-face card-back-face" style="--accent:${col}">
+          <div class="back-number">${String(idx+1).padStart(2,'0')}</div>
+          <div class="back-name-badge">${escapeHtml(name)}</div>
+          <div class="back-tap-hint">👆 タップで公開</div>
+          <div class="back-deco">?</div>
+        </div>
+        <div class="card-face card-front-face" style="--accent:${col}">
+          <div class="front-number">${String(idx+1).padStart(2,'0')}</div>
+          <div class="front-name-telop">${escapeHtml(name)}</div>
+          <div class="front-answer">${escapeHtml(answer)}</div>
+        </div>
+      </div>
+    `;
+
+    card.addEventListener('click', () => {
+      if (!card.classList.contains('revealed')) {
+        card.classList.add('revealed');
+        revealedCards.add(id);
+        playReveal();
+      }
+    });
+    return card;
+  }
+
+  function playReveal() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'sine';
+      o.frequency.setValueAtTime(440, ctx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.2);
+      g.gain.setValueAtTime(0.2, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      o.start(); o.stop(ctx.currentTime + 0.3);
+    } catch(e){}
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=M+PLUS+Rounded+1c:wght@400;700;900&display=swap');
+:root{
+  --yellow:#FFE600; --red:#FF3B3B; --blue:#0057FF;
+  --bg:#1a0a2e; --radius:16px;
+}
+*{ box-sizing:border-box; margin:0; padding:0; }
+body{
+  font-family:'M PLUS Rounded 1c',sans-serif;
+  background:var(--bg); min-height:100vh; color:#fff;
+  background-image:
+    repeating-linear-gradient(0deg,transparent,transparent 39px,#ffffff08 40px),
+    repeating-linear-gradient(90deg,transparent,transparent 39px,#ffffff08 40px);
+}
+
+/* ── ヘッダー ── */
+header{
+  background:#111; border-bottom:4px solid var(--yellow);
+  padding:0 20px; height:64px;
+  display:flex; align-items:center; gap:16px;
+  position:sticky; top:0; z-index:200;
+}
+.onair-lamp{
+  display:flex; align-items:center; gap:8px;
+  background:#222; border:2px solid #444;
+  border-radius:30px; padding:6px 14px 6px 10px; transition:all .3s;
+}
+.lamp-dot{
+  width:14px; height:14px; border-radius:50%;
+  background:#444; transition:background .3s,box-shadow .3s;
+}
+.onair-lamp.on{ border-color:var(--red); background:#2a0000; }
+.onair-lamp.on .lamp-dot{
+  background:var(--red);
+  box-shadow:0 0 10px var(--red),0 0 20px #ff000066;
+  animation:blink 1s infinite;
+}
+.onair-lamp.on .lamp-text{ color:var(--red); }
+.lamp-text{ font-family:'Dela Gothic One',sans-serif; font-size:13px; color:#555; letter-spacing:2px; }
+@keyframes blink{ 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.header-title{ font-family:'Dela Gothic One',sans-serif; line-height:1.15; }
+.header-title .ht-small{
+  display:block; font-size:clamp(7px,1.6vw,10px);
+  letter-spacing:4px; color:#ffffff66; opacity:.85;
+}
+.header-title .ht-big{
+  display:block; font-size:clamp(13px,2.6vw,19px);
+  color:var(--yellow); letter-spacing:2px; text-shadow:2px 2px 0 var(--red);
+}
+
+.header-count{
+  margin-left:auto; background:var(--yellow); border-radius:30px;
+  padding:6px 18px; font-family:'Dela Gothic One',sans-serif;
+  font-size:16px; color:#111; display:flex; align-items:center; gap:6px; white-space:nowrap;
+}
+
+/* ── メイン ── */
+main{ max-width:960px; margin:0 auto; padding:24px 16px 48px; }
+
+/* ── テロップ ── */
+.telop-bar{
+  background:#111; border-radius:var(--radius); padding:14px 20px;
+  margin-bottom:20px; display:flex; align-items:center; gap:14px;
+  border:3px solid #333; overflow:hidden; min-height:58px;
+}
+.telop-label{
+  font-family:'Dela Gothic One',sans-serif; font-size:11px; letter-spacing:3px;
+  color:var(--yellow); background:var(--red); padding:4px 10px;
+  border-radius:6px; white-space:nowrap; flex-shrink:0;
+}
+#currentQDisplay{ font-size:18px; font-weight:900; color:#fff; line-height:1.4; }
+
+/* ── カードグリッド ── */
+.action-bar{
+  display:flex; align-items:center; justify-content:space-between;
+  flex-wrap:wrap; gap:10px; margin-bottom:16px;
+}
+.action-bar-left{
+  font-family:'Dela Gothic One',sans-serif; font-size:14px;
+  color:var(--yellow); letter-spacing:2px;
+}
+.cards-wrap{
+  background:#ffffff0f; border-radius:var(--radius);
+  border:2px dashed #ffffff22; padding:16px;
+  min-height:200px; position:relative;
+}
+#cardsContainer{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:14px;
+}
+#emptyState{
+  position:absolute; inset:0; display:flex;
+  flex-direction:column; align-items:center; justify-content:center;
+  color:#ffffff44; font-family:'Dela Gothic One',sans-serif;
+  font-size:13px; letter-spacing:3px; gap:10px;
+}
+#emptyState .big{ font-size:40px; }
+
+/* ── カード（フリップ）── */
+.answer-card{
+  height:200px; perspective:900px; cursor:pointer;
+  animation:popIn .35s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes popIn{
+  from{ opacity:0; transform:scale(0.5) rotate(-5deg); }
+  to  { opacity:1; transform:scale(1)   rotate(0deg); }
+}
+.card-inner{
+  position:relative; width:100%; height:100%;
+  transform-style:preserve-3d;
+  transition:transform 0.55s cubic-bezier(0.4,0,0.2,1);
+}
+.answer-card.revealed .card-inner{ transform:rotateY(180deg); }
+
+.card-face{
+  position:absolute; inset:0; border-radius:14px;
+  backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; padding:14px; border:3px solid #111;
+}
+
+/* 裏面 */
+.card-back-face{ background:var(--accent,#FF6B6B); box-shadow:5px 5px 0 #111; }
+.back-deco{
+  position:absolute; font-family:'Dela Gothic One',sans-serif;
+  font-size:90px; color:#fff; opacity:.15; line-height:1;
+}
+.back-number{
+  position:absolute; top:10px; left:12px;
+  font-family:'Dela Gothic One',sans-serif; font-size:11px;
+  color:#11111188; letter-spacing:1px;
+}
+.back-name-badge{
+  background:#111; color:#fff; font-weight:900; font-size:15px;
+  padding:5px 14px; border-radius:30px; margin-bottom:10px;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; z-index:1;
+}
+.back-tap-hint{ font-size:11px; color:#111; opacity:.7; letter-spacing:1px; z-index:1; }
+
+/* 表面（最初から裏返し） */
+.card-front-face{
+  background:#fff; transform:rotateY(180deg);
+  box-shadow:5px 5px 0 #111; gap:8px;
+}
+.card-front-face::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:6px;
+  background:var(--accent,#FF6B6B); border-radius:11px 11px 0 0;
+}
+.front-number{
+  position:absolute; top:14px; left:12px;
+  font-family:'Dela Gothic One',sans-serif; font-size:11px; color:#ccc;
+}
+.front-name-telop{
+  background:var(--accent,#FF6B6B); color:#fff; font-weight:900; font-size:12px;
+  padding:3px 12px; border-radius:20px; margin-top:8px;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.front-answer{
+  font-size:16px; font-weight:900; color:#111; text-align:center;
+  line-height:1.5; word-break:break-all; max-height:90px; overflow-y:auto; padding:0 4px;
+}
+
+@media(max-width:500px){
+  #cardsContainer{ grid-template-columns:repeat(2,1fr); }
+  .answer-card{ height:170px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="onair-lamp" id="onairLamp">
+    <div class="lamp-dot"></div>
+    <div class="lamp-text">ON AIR</div>
+  </div>
+  <div class="header-title">
+    <span class="ht-small">TAPI TAPI</span>
+    <span class="ht-big">GM STUDIO</span>
+  </div>
+  <div class="header-count">📬 <span id="answerCount">0</span> 件</div>
+</header>
+
+<main>
+
+  <!-- 質問テロップ（表示のみ） -->
+  <div class="telop-bar">
+    <div class="telop-label">NOW</div>
+    <div id="currentQDisplay">次の質問をお待ちください…</div>
+  </div>
+
+  <!-- 回答カード -->
+  <div class="action-bar">
+    <div class="action-bar-left">🃏 ANSWERS</div>
+  </div>
+  <div class="cards-wrap">
+    <div id="emptyState">
+      <div class="big">📭</div>
+      <div>回答を待ち受け中…</div>
+    </div>
+    <div id="cardsContainer"></div>
+  </div>
+
+</main>
+</body>
+</html>
